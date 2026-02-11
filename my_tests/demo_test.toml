@@ -1,0 +1,76 @@
+[db]
+driver="postgres"
+dsn="postgres://user:pass@127.0.0.0:5432/mydb"
+
+[db.conn_pool]
+max_open_connections=100
+max_idle_connections=30
+conn_max_idle_time="10s"
+conn_max_lifetime="5s"
+
+[workflow]
+[[workflow.scenarios]]
+name="Demo PPM (Insert)"
+duration="1m"
+threads=10
+ramp_up="0s"
+pacing="2s"
+
+[workflow.scenarios.statement]
+name="insert"
+query="INSERT INTO public.users DEFAULT values;"
+
+[[workflow.scenarios]]
+name="Demo PPM (Select)"
+duration="1m"
+threads=20
+ramp_up="0s"
+pacing="2s"
+
+[workflow.scenarios.statement]
+name="select"
+query="select * from public.users where id = $1;"
+args="randIntRange 1 100000"
+
+[[workflow.scenarios]]
+name="Demo PPM (Update)"
+duration="1m"
+threads=20
+ramp_up="0s"
+pacing="1s"
+
+[workflow.scenarios.statement]
+name="update"
+query="UPDATE public.users SET name=$1 where id = $2;"
+args="randStringName, randIntRange 1 100000"
+
+[[workflow.scenarios]]
+name="Demo PPM (Delete)"
+duration="1m"
+threads=20
+ramp_up="0s"
+pacing="3s"
+
+[workflow.scenarios.statement]
+name="delete"
+query="delete from public.users where id=(SELECT id FROM public.users WHERE id >= 100000 AND id <= (SELECT MAX(id) FROM public.users) ORDER BY RANDOM() LIMIT 1);"
+
+[[workflow.scenarios]]
+name="Demo PPM (Get database_stat)"
+duration="1m"
+threads=5
+ramp_up="0s"
+pacing="5s"
+
+[workflow.scenarios.statement]
+name="SELECT pg_stat"
+query="SELECT * FROM pg_stat_database;"
+
+[output.report]
+to_file=false
+to_console=true
+
+[output.log]
+to_file= false
+to_console=true
+level="info"

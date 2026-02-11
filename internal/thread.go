@@ -1,0 +1,94 @@
+package internal
+
+import (
+	"context"
+	"sync"
+	"time"
+
+	"github.com/rs/zerolog"
+)
+
+type Thread struct {
+	Id                int
+	Metric            *Metric
+	statementExecutor *StatementExecutor
+	logger            *zerolog.Logger
+}
+
+func NewThread(id int, metric *Metric, statementExecutor *StatementExecutor, logger *zerolog.Logger) *Thread {
+	threadLogger := logger.With().Int("thread_id", id).Logger()
+	return &Thread{
+		Id:                id,
+		Metric:            metric,
+		statementExecutor: statementExecutor,
+		logger:            &threadLogger,
+	}
+}
+
+func (t *Thread) RunOnDur(ctx context.Context, wg *sync.WaitGroup) {
+	defer func() {
+		wg.Done()
+		t.Metric.SetStopTime(time.Now())
+	}()
+
+	startTime := time.Now()
+	t.Metric.SetStartTime(startTime)
+	t.logger.Debug().Time("start_time", startTime).Msg("Thread started (duration-based)")
+
+	executionCount := 0
+	for {
+		select {
+		case <-ctx.Done():
+			t.logger.Debug().Int("executions_completed", executionCount).Msg("Thread stopped due to context cancellation")
+			return
+		default:
+		}
+		t.exec(ctx)
+		executionCount++
+		t.Metric.AddIter()
+
+		if executionCount%100 == 0 {
+			t.logger.Debug().Int("executions_completed", executionCount).Msg("Thread execution progress")
+		}
+	}
+}
+
+func (t *Thread) RunOnIter(ctx context.Context, wg *sync.WaitGroup, iterations int) {
+	defer func() {
+		wg.Done()
+		t.Metric.SetStopTime(time.Now())
+	}()
+
+	startTime := time.Now()
+	t.Metric.SetStartTime(startTime)
+	t.logger.Debug().Time("start_time", startTime).Int("total_iterations", iterations).Msg("Thread started (iteration-based)")
+
+	for iter := 0; iter < iterations; iter++ {
+		select {
+		case <-ctx.Done():
+			t.logger.Debug().Int("completed_iterations", iter).Int("total_iterations", iterations).Msg("Thread stopped due to context cancellation")
+			return
+		default:
+		}
+		t.exec(ctx)
+		t.Metric.AddIter()
+
+		if iterations >= 10 && (iter+1)%(iterations/10) == 0 {
+			t.logger.Debug().Int("completed_iterations", iter+1).Int("total_iterations", iterations).Float64("progress_percent", float64(iter+1)/float64(iterations)*100).Msg("Thread iteration progress")
+		}
+	}
+	t.logger.Debug().Int("completed_iterations", iterations).Msg("Thread completed all iterations")
+}
+
+func (t *Thread) exec(ctx context.Context) {
+	start := time.Now()
+	queryResult := t.statementExecutor.Fn(ctx)
+	if err := t.Metric.SubmitQueryResult(queryResult); err != nil {
+		t.logger.Error().Err(queryResult.Err).Str("duration", queryResult.ResponseTime.String()).Str("query", t.statementExecutor.Query).Msg("Query execution failed")
+	}
+	if queryResult.Err != nil {
+		t.logger.Error().Err(queryResult.Err).Str("duration", queryResult.ResponseTime.String()).Str("query", t.statementExecutor.Query).Msg("Query execution failed")
+	}
+	t.logger.Trace().Str("duration", queryResult.ResponseTime.String()).Msg("Query executed successfully")
+	EvaluatePacing(start, t.statementExecutor.Pacing)
+}

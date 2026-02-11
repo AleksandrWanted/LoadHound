@@ -1,0 +1,30 @@
+[db]
+driver="postgres"
+dsn="postgres://user:pass@127.0.0.1:5432/mydb"
+
+[db.conn_pool]
+max_open_connections=100
+max_idle_connections=30
+conn_max_idle_time="30s"
+conn_max_lifetime="30s"
+
+[workflow]
+[[workflow.scenarios]]
+name="Create table for PPM demo"
+iterations=1
+threads=1
+ramp_up="0s"
+pacing="0s"
+
+[workflow.scenarios.statement]
+name="Create table users"
+path_to_query="scripts/sql/prepare_demo.sql"
+
+[output.report]
+to_file=false
+to_console=true
+
+[output.log]
+to_file= false
+to_console=true
+level="info"
